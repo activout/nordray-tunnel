@@ -1,4 +1,4 @@
-# frps configuration for the Nordray Tunnels relay.
+# frps configuration for the Nordray Tunnel relay.
 # Values come from environment variables through frp's built-in template
 # rendering; no shell interpolation is involved.
 bindPort = 7000

@@ -27,3 +27,20 @@ jobs:
           mkdir .bin && tar xzf $f -C .bin --strip-components=1
       - run: go vet ./...
       - run: go test ./... -count=1
+
+  build-cli:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build nordray-tunnel for ${{ matrix.target }}
+        run: |
+          export GOOS=${TARGET%/*} GOARCH=${TARGET#*/} CGO_ENABLED=0
+          go build -trimpath -o dist/ ./cmd/nordray-tunnel
+        env:
+          TARGET: ${{ matrix.target }}

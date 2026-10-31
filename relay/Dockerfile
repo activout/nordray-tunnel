@@ -1,4 +1,4 @@
-# Nordray Tunnels relay: unmodified upstream frps with a baked-in config.
+# Nordray Tunnel relay: unmodified upstream frps with a baked-in config.
 # Upstream image pinned by multi-arch index digest (frp v0.71.1, Alpine based).
 FROM fatedier/frps:v0.71.1@sha256:48720c81f048e842f7f0b8053753c1a8514053d59d2dee8a953f67995de73a18
 

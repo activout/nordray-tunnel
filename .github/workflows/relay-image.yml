@@ -29,4 +29,4 @@ jobs:
           context: relay
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' }}
-          tags: ghcr.io/activout/nordray-tunnels-relay:sha-${{ github.sha }}
+          tags: ghcr.io/activout/nordray-tunnel-relay:sha-${{ github.sha }}
