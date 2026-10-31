@@ -1,0 +1,11 @@
+# frps configuration for the Nordray Tunnels relay.
+# The tunnel token comes from the NORDRAY_TUNNEL_TOKEN environment variable
+# through frp's built-in template rendering; no shell interpolation is involved.
+bindPort = 7000
+vhostHTTPPort = 8080
+
+auth.method = "token"
+auth.token = "{{ .Envs.NORDRAY_TUNNEL_TOKEN }}"
+
+log.to = "console"
+log.level = "{{ .Envs.NORDRAY_LOG_LEVEL }}"
