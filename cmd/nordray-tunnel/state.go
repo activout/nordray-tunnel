@@ -48,10 +48,13 @@ type Proxy struct {
 	Name        string `json:"name"`
 	Hostname    string `json:"hostname"`
 	LocalScheme string `json:"localScheme,omitempty"` // "http" (default) or "https"
-	LocalIP     string `json:"localIp"`
-	LocalPort   int    `json:"localPort"`
-	DNSZoneID   int64  `json:"dnsZoneId,omitempty"`
-	DNSRecordID int64  `json:"dnsRecordId,omitempty"`
+	// DefaultHostname marks a service published on the app pull zone's own
+	// mc-*.b-cdn.net name: no DNS record and no certificate of its own.
+	DefaultHostname bool   `json:"defaultHostname,omitempty"`
+	LocalIP         string `json:"localIp"`
+	LocalPort       int    `json:"localPort"`
+	DNSZoneID       int64  `json:"dnsZoneId,omitempty"`
+	DNSRecordID     int64  `json:"dnsRecordId,omitempty"`
 }
 
 var namePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$`)

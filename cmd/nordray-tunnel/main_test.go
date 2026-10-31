@@ -141,7 +141,7 @@ func (f *fakeBunny) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			hs := []map[string]any{}
+			hs := []map[string]any{{"Value": fmt.Sprintf("mc-zone%d.b-cdn.net", id), "HasCertificate": true}}
 			for _, h := range f.hostnames[id] {
 				hs = append(hs, map[string]any{"Value": h, "HasCertificate": false})
 			}
@@ -517,5 +517,33 @@ func TestFindFrpcMakesRelativePathAbsolute(t *testing.T) {
 	bin, err := findFrpc("./frpc")
 	if err != nil || !filepath.IsAbs(bin) {
 		t.Fatalf("%q %v", bin, err)
+	}
+}
+
+func TestDefaultHostnameNeedsNoDNSOrCertificate(t *testing.T) {
+	f := setupTest(t)
+	s := newTestState(t, "wss")
+	if err := reconcile(context.Background(), client(), s, true); err != nil {
+		t.Fatal(err)
+	}
+	host := s.AppPullZoneName + ".b-cdn.net"
+	s.Proxies = []Proxy{{Name: "web", Hostname: host, DefaultHostname: true, LocalIP: "127.0.0.1", LocalPort: 8080}}
+	if err := publish(context.Background(), client(), s, &s.Proxies[0]); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []string{"PUT /dnszone/9/records", "GET /pullzone/loadFreeCertificate"} {
+		if f.calls[call] != 0 {
+			t.Errorf("%s called for the default hostname", call)
+		}
+	}
+	if len(f.hostnames[s.AppPullZoneID]) != 0 {
+		t.Errorf("added hostnames %v", f.hostnames[s.AppPullZoneID])
+	}
+	if len(f.forceSSL) != 1 || f.forceSSL[0] != host {
+		t.Errorf("force SSL %v", f.forceSSL)
+	}
+	cfg, err := buildFrpcConfig(s, "tok", nil)
+	if err != nil || cfg.Proxies[0].CustomDomains[0] != host {
+		t.Errorf("frpc domains %v %v", cfg.Proxies[0].CustomDomains, err)
 	}
 }

@@ -33,6 +33,18 @@ nordray-tunnel run
 nordray-tunnel status --remote
 ```
 
+### A service without a public DNS name
+
+```sh
+nordray-tunnel add web --default-hostname --local http://127.0.0.1:8080
+# → https://mc-xxxxxxxxxx.b-cdn.net/
+```
+
+The service gets the installation's own pull zone hostname. It needs no DNS record and no certificate of its own: Bunny's wildcard `*.b-cdn.net` certificate covers it, so the name never appears in Certificate Transparency logs, which scanners watch for new hostnames. Measured: a custom hostname got scanner traffic within about 15 minutes of its certificate, while a service on the pull zone hostname got none in 16 minutes.
+
+- One such service per installation (the pull zone has one `b-cdn.net` name). The `*.bunny.run` alias of the same zone answers 404.
+- The name is hard to guess, not secret. It can leak through links, `Referer` headers, browser history and passive DNS. Anyone who has it can reach the service, so protect anything private with its own login or Nordray Access.
+
 To run the agent on another machine, export its configuration and copy it over a private channel:
 
 ```sh
