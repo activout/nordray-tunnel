@@ -82,6 +82,11 @@ jobs:
             sleep 2
           done
           ./nordray-tunnel status --name quick
+          # The upgrade is only meaningful with the agent connected beforehand.
+          if ! ./nordray-tunnel status --name quick | grep -q '\[running\]'; then
+            echo "::error::the agent did not connect before the upgrade; check agent.log (a wrong LIVE_QUICK_TUNNEL_TOKEN shows as a token mismatch)"
+            exit 1
+          fi
 
       - name: Upgrade the relay with the agent connected
         env:
