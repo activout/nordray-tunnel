@@ -1,0 +1,142 @@
+# Live end-to-end test against the real Bunny account. Manual only: it
+# creates billable resources (a Magic Containers app, two pull zones, a
+# Shield zone and, with anycast, a paid IPv4) and tears them down again.
+#
+# Requires the environment "live-bunny" with the secret BUNNY_API_KEY.
+#
+# Cautions:
+# - The hostname is fixed. Bunny's free certificates are, as far as known,
+#   Let's Encrypt, which allows about five duplicate certificates per week
+#   for the same hostname, so keep runs to a handful a week.
+# - Each run leaves a free Shield zone behind: the Shield API cannot delete
+#   them.
+# - If destroy fails, the run's state.json artifact identifies every
+#   resource by ID. Put it in the user configuration directory as
+#   nordray-tunnel/ci/state.json and run: nordray-tunnel destroy --name ci
+name: live-e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      transport:
+        description: Tunnel transport (anycast attaches a paid IPv4 for the run)
+        type: choice
+        options: [wss, anycast]
+        default: wss
+      region:
+        description: Magic Containers region
+        type: string
+        default: DK
+
+# One run at a time, and never cancel a run part-way: that could leave
+# resources without state to delete them by.
+concurrency:
+  group: live-bunny
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  LIVE_HOSTNAME: tunnel-test.nordray.net
+  NORDRAY_TUNNEL_SECRET_STORE: file
+  RELAY_IMAGE: ghcr.io/activout/nordray-tunnel-relay:sha-${{ github.sha }}
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    environment: live-bunny
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Keep CLI state in a known place
+        run: echo "XDG_CONFIG_HOME=$RUNNER_TEMP/config" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the relay image for this commit
+        uses: docker/build-push-action@v6
+        with:
+          context: relay
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.RELAY_IMAGE }}
+
+      - name: Build the CLI and the fixture, install frpc
+        run: |
+          go build -o nordray-tunnel ./cmd/nordray-tunnel
+          go build -o fixture ./e2e/fixture
+          ./nordray-tunnel install-frpc -o .bin
+
+      - name: Start the private service
+        run: nohup ./fixture -addr 127.0.0.1:18081 > fixture.log 2>&1 &
+
+      - name: setup
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: >-
+          ./nordray-tunnel setup --name ci --yes --api-key-env BUNNY_API_KEY
+          --region "${{ inputs.region }}" --transport "${{ inputs.transport }}" --image "$RELAY_IMAGE"
+
+      - name: add
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: ./nordray-tunnel add web --name ci --hostname "$LIVE_HOSTNAME" --local http://127.0.0.1:18081 --api-key-env BUNNY_API_KEY
+
+      - name: run (agent, without the Bunny API key)
+        run: |
+          nohup ./nordray-tunnel run --name ci --frpc .bin/frpc > agent.log 2>&1 &
+          for i in $(seq 1 30); do
+            ./nordray-tunnel status --name ci | grep -q '\[running\]' && break
+            sleep 2
+          done
+          ./nordray-tunnel status --name ci
+
+      - name: setup again changes nothing
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: |
+          ./nordray-tunnel setup --name ci --yes --api-key-env BUNNY_API_KEY | tee rerun.log
+          if grep -qE '^(Created|Deleted|Updated)' rerun.log; then
+            echo "::error::an unchanged setup changed resources"; exit 1
+          fi
+
+      - name: Live checks through Bunny CDN
+        run: |
+          export LIVE_DEFAULT_HOST="$(jq -r '.appPullZoneName' "$XDG_CONFIG_HOME/nordray-tunnel/ci/state.json").b-cdn.net"
+          go test -tags live ./e2e/live -count=1 -v
+
+      - name: status --remote
+        if: always()
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: ./nordray-tunnel status --name ci --remote --api-key-env BUNNY_API_KEY || true
+
+      - name: Keep state and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-e2e-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/config/nordray-tunnel/ci/state.json
+            agent.log
+            fixture.log
+          if-no-files-found: ignore
+
+      - name: destroy
+        if: always()
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: |
+          pkill -f 'nordray-tunnel run' || true
+          if [ -f "$XDG_CONFIG_HOME/nordray-tunnel/ci/state.json" ]; then
+            ./nordray-tunnel destroy --name ci --yes --api-key-env BUNNY_API_KEY
+          fi

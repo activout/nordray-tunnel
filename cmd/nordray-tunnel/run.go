@@ -134,6 +134,12 @@ func findFrpc(explicit string) (string, error) {
 			return "", fmt.Errorf("frpc not found; run: nordray-tunnel install-frpc (or pass --frpc)")
 		}
 	}
+	// runChild starts frpc in the configuration's directory, where a
+	// relative path would no longer resolve.
+	bin, err := filepath.Abs(bin)
+	if err != nil {
+		return "", err
+	}
 	out, err := exec.Command(bin, "-v").Output()
 	if err != nil {
 		return "", fmt.Errorf("%s -v: %w", bin, err)

@@ -3,9 +3,11 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/zalando/go-keyring"
@@ -23,19 +25,79 @@ func secretKey(installation, kind string) string {
 	return installation + "/" + kind
 }
 
+// NORDRAY_TUNNEL_SECRET_STORE=file keeps secrets in secrets.json (mode 0600)
+// in the configuration directory, for machines without an OS credential
+// store such as headless Linux servers and CI runners. It is an explicit
+// opt-in because the file is plain text.
+func fileStore() bool { return os.Getenv("NORDRAY_TUNNEL_SECRET_STORE") == "file" }
+
+func secretsFile() (string, map[string]string, error) {
+	root, err := configRoot()
+	if err != nil {
+		return "", nil, err
+	}
+	path := filepath.Join(root, "secrets.json")
+	m := map[string]string{}
+	b, err := os.ReadFile(path)
+	if err == nil {
+		err = json.Unmarshal(b, &m)
+	} else if errors.Is(err, os.ErrNotExist) {
+		err = nil
+	}
+	return path, m, err
+}
+
+func saveSecretsFile(path string, m map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return writePrivate(path, b)
+}
+
+// keyringError adds the way out to a credential store failure.
+func keyringError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w (no usable OS credential store? set NORDRAY_TUNNEL_SECRET_STORE=file to keep secrets in a private file instead)", err)
+}
+
 func getSecret(installation, kind string) (string, error) {
+	if fileStore() {
+		_, m, err := secretsFile()
+		return m[secretKey(installation, kind)], err
+	}
 	v, err := keyring.Get(keyringService, secretKey(installation, kind))
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", nil
 	}
-	return v, err
+	return v, keyringError(err)
 }
 
 func setSecret(installation, kind, value string) error {
-	return keyring.Set(keyringService, secretKey(installation, kind), value)
+	if fileStore() {
+		path, m, err := secretsFile()
+		if err != nil {
+			return err
+		}
+		m[secretKey(installation, kind)] = value
+		return saveSecretsFile(path, m)
+	}
+	return keyringError(keyring.Set(keyringService, secretKey(installation, kind), value))
 }
 
 func deleteSecret(installation, kind string) {
+	if fileStore() {
+		if path, m, err := secretsFile(); err == nil {
+			delete(m, secretKey(installation, kind))
+			_ = saveSecretsFile(path, m)
+		}
+		return
+	}
 	_ = keyring.Delete(keyringService, secretKey(installation, kind))
 }
 

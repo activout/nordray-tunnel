@@ -479,3 +479,35 @@ func TestInstallFrpcVerifiesChecksum(t *testing.T) {
 		t.Error("frpc installed despite the mismatch")
 	}
 }
+
+func TestFileSecretStore(t *testing.T) {
+	setupTest(t)
+	t.Setenv("NORDRAY_TUNNEL_SECRET_STORE", "file")
+	tok, err := ensureSecret("home", "tunnel-token")
+	if err != nil || len(tok) != 64 {
+		t.Fatalf("%q %v", tok, err)
+	}
+	if again, _ := ensureSecret("home", "tunnel-token"); again != tok {
+		t.Error("token not persisted")
+	}
+	path, _, _ := secretsFile()
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("secrets.json: %v %v", fi, err)
+	}
+	deleteSecret("home", "tunnel-token")
+	if v, _ := getSecret("home", "tunnel-token"); v != "" {
+		t.Error("not deleted")
+	}
+}
+
+func TestFindFrpcMakesRelativePathAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "frpc"), []byte("#!/bin/sh\necho 0.71.1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	bin, err := findFrpc("./frpc")
+	if err != nil || !filepath.IsAbs(bin) {
+		t.Fatalf("%q %v", bin, err)
+	}
+}
