@@ -35,7 +35,7 @@ func newPKI(t *testing.T) pki {
 	}
 	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	caTmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Nordray Tunnels test CA"},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Nordray Tunnel test CA"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
 	}
