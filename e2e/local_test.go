@@ -164,7 +164,8 @@ func lastLine(s string) string {
 
 // The front door certificate from httptest is issued for example.com.
 func trusted(r relay) string {
-	return fmt.Sprintf("transport.tls.trustedCaFile = %q\ntransport.tls.serverName = \"example.com\"", r.caFile)
+	// tls.enable mirrors the generated agent configuration.
+	return fmt.Sprintf("transport.tls.enable = true\ntransport.tls.trustedCaFile = %q\ntransport.tls.serverName = \"example.com\"", r.caFile)
 }
 
 // fixture identifies itself, echoes request bodies and serves sized downloads.

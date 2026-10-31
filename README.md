@@ -61,6 +61,23 @@ agent (frpc) ──frp TLS──> Anycast IPv4 :7000 ─────────
 - **Origin authentication** is not implemented: services are treated as public websites. Measured so far, the relay is reachable only through its own pull zones (see the feasibility report). Whether other Magic Containers apps can reach it internally has **not been verified yet**. Do not publish anything you would not put on the public internet.
 - Shield does not inspect traffic inside the tunnel, only visitor requests.
 
+### What your service sees
+
+Measured live on 31 October 2026 with a service that echoed its request headers:
+
+| Header | At your service |
+| --- | --- |
+| `Authorization`, cookies, custom headers, `Accept`, `User-Agent`, path and query | **Unchanged** |
+| `Host` | The public hostname |
+| `X-Forwarded-Proto` | `https` (a client-supplied value is overwritten; plain HTTP is redirected to HTTPS) |
+| `X-Forwarded-For` | Real client IP first (a client-supplied value is replaced), then the CDN edge IP |
+| `X-Real-Ip` | Real client IP |
+| `X-Forwarded-Host` | The public hostname |
+| `Via`, `Cdn-*` (request ID, country, pull zone and more) | Added by Bunny |
+| `Accept-Encoding` | Set by Bunny (`zstd, br, gzip`) when the client sent none |
+
+A service therefore sees an ordinary reverse proxy chain. If it derives the client IP from `X-Forwarded-For`, take the first entry or `X-Real-Ip`, not the last.
+
 ## Secrets
 
 | Secret | Where it lives |

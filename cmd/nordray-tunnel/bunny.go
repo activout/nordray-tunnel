@@ -168,6 +168,7 @@ type mcApp struct {
 		Name      string       `json:"name"`
 		ImageTag  string       `json:"imageTag"`
 		Digest    string       `json:"imageDigest"`
+		Env       []mcEnv      `json:"environmentVariables"`
 		Endpoints []mcEndpoint `json:"endpoints"`
 	} `json:"containerTemplates"`
 	ContainerInstances []struct {

@@ -64,6 +64,9 @@ const caFileName = "ca.pem"
 func buildFrpcConfig(s *State, token string, admin *adminServer) (*frpcConfig, error) {
 	c := &frpcConfig{LoginFailExit: false}
 	c.Auth.Method, c.Auth.Token = "token", token
+	// wss always uses TLS; enabling it explicitly only stops frpc warning that
+	// trustedCaFile is ignored, which it is not for wss (client/connector.go).
+	c.Transport.TLS.Enable = true
 	c.Transport.TLS.TrustedCaFile = caFileName
 	switch s.Transport {
 	case "wss":
@@ -80,7 +83,6 @@ func buildFrpcConfig(s *State, token string, admin *adminServer) (*frpcConfig, e
 		c.ServerAddr = host
 		c.ServerPort, _ = strconv.Atoi(port)
 		c.Transport.Protocol = "tcp"
-		c.Transport.TLS.Enable = true
 		c.Transport.TLS.ServerName = relayServerName
 	default:
 		return nil, fmt.Errorf("unknown transport %q", s.Transport)

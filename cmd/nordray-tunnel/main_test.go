@@ -102,7 +102,8 @@ func (f *fakeBunny) serve(w http.ResponseWriter, r *http.Request) {
 			notFound()
 			return
 		}
-		reply(map[string]any{"id": "APP1", "status": "active", "containerTemplates": []any{map[string]any{"id": "C1", "endpoints": f.app.endpoints}}})
+		reply(map[string]any{"id": "APP1", "status": "active", "containerTemplates": []any{map[string]any{
+			"id": "C1", "imageTag": "sha-test", "imageDigest": "sha256:" + strings.Repeat("ab", 32), "environmentVariables": f.env, "endpoints": f.app.endpoints}}})
 	case key == "GET /mc/apps/APP1/endpoints":
 		reply(map[string]any{"items": f.app.endpoints})
 	case key == "PATCH /mc/apps/APP1/containers/C1":
@@ -247,6 +248,9 @@ func TestSetupIsIdempotent(t *testing.T) {
 	}
 	if n := f.calls["POST /shield/shield-zone"]; n != 1 {
 		t.Errorf("created Shield %d times", n)
+	}
+	if n := f.calls["PATCH /mc/apps/APP1/containers/C1"]; n != 0 {
+		t.Errorf("an unchanged rerun patched the container %d times, restarting the relay", n)
 	}
 	if again.Image.RegistryID != "5370" {
 		t.Errorf("registry %q; want the private registry for the host", again.Image.RegistryID)
