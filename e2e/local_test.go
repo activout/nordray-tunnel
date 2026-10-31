@@ -91,7 +91,8 @@ func startRelay(t *testing.T, bin string, env ...string) relay {
 		t.Fatal(err)
 	}
 	local := strings.NewReplacer("bindPort = 7000", fmt.Sprintf("bindPort = %d", bindPort),
-		"vhostHTTPPort = 8080", fmt.Sprintf("vhostHTTPPort = %d", vhostPort)).Replace(string(cfg))
+		"vhostHTTPPort = 8080", fmt.Sprintf("vhostHTTPPort = %d", vhostPort),
+		"/etc/frp/error.html", must(filepath.Abs("../relay/error.html"))).Replace(string(cfg))
 	path := filepath.Join(dir, "frps.toml")
 	if err := os.WriteFile(path, []byte(local), 0o600); err != nil {
 		t.Fatal(err)
@@ -250,6 +251,9 @@ func TestWSSRoundTrip(t *testing.T) {
 		if code != http.StatusNotFound || strings.Contains(body, "app-") {
 			t.Errorf("got %d %q", code, body)
 		}
+		if !strings.Contains(body, "<title>Service not available · Nordray Tunnel</title>") {
+			t.Errorf("not the Nordray Tunnel error page: %.200q", body)
+		}
 	})
 
 	t.Run("application Authorization passes through unchanged", func(t *testing.T) {
@@ -338,4 +342,11 @@ func TestNoCAFileSkipsVerification(t *testing.T) {
 	cfg := writeFrpc(t, r, token, "", proxy{"a", "a.example.test", fixture(t, "app-a")})
 	start(t, filepath.Join(bin, "frpc"), nil, "-c", cfg)
 	waitRoute(t, r, "a.example.test")
+}
+
+func must(s string, err error) string {
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
