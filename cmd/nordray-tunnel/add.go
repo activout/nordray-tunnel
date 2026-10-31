@@ -17,17 +17,17 @@ import (
 var hostnamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
 func cmdAdd(args []string) error {
-	fs, name := newFlags("add", "<proxy> --hostname app.example.se --local http://127.0.0.1:8080")
+	fs, name := newFlags("add", "<proxy> (--hostname app.example.se | --default-hostname) --local http://127.0.0.1:8080")
 	hostname := fs.String("hostname", "", "public `hostname` to serve")
+	defaultHost := fs.Bool("default-hostname", false, "serve on the installation's own mc-*.b-cdn.net hostname instead: no DNS record, and no certificate of its own in Certificate Transparency logs; one service per installation")
 	local := fs.String("local", "", "local HTTP service `URL`, for example http://127.0.0.1:8080")
 	keyEnv := fs.String("api-key-env", "", "read the Bunny API key from this environment `variable`")
 	proxyName, err := parseWithName(fs, args)
 	if err != nil {
 		return err
 	}
-	h := strings.ToLower(strings.TrimSuffix(*hostname, "."))
-	if !hostnamePattern.MatchString(h) {
-		return fmt.Errorf("--hostname %q is not a valid public hostname", *hostname)
+	if (*hostname == "") == !*defaultHost {
+		return errors.New("give exactly one of --hostname and --default-hostname")
 	}
 	scheme, ip, port, err := parseLocal(*local)
 	if err != nil {
@@ -40,6 +40,15 @@ func cmdAdd(args []string) error {
 	if err := s.mustExist(); err != nil {
 		return err
 	}
+	h := strings.ToLower(strings.TrimSuffix(*hostname, "."))
+	if *defaultHost {
+		if s.AppPullZoneName == "" {
+			return fmt.Errorf("installation %q has no app pull zone name yet; run setup", s.Name)
+		}
+		h = s.AppPullZoneName + ".b-cdn.net"
+	} else if !hostnamePattern.MatchString(h) || strings.HasSuffix(h, ".b-cdn.net") || strings.HasSuffix(h, ".bunny.run") {
+		return fmt.Errorf("--hostname %q is not a valid public hostname of your own (use --default-hostname for the pull zone's)", *hostname)
+	}
 	for _, p := range s.Proxies {
 		if p.Hostname == h && p.Name != proxyName {
 			return fmt.Errorf("hostname %s is already used by proxy %q", h, p.Name)
@@ -50,7 +59,7 @@ func cmdAdd(args []string) error {
 		return fmt.Errorf("proxy %q already serves %s; remove it first", proxyName, p.Hostname)
 	}
 	if p == nil {
-		s.Proxies = append(s.Proxies, Proxy{Name: proxyName, Hostname: h})
+		s.Proxies = append(s.Proxies, Proxy{Name: proxyName, Hostname: h, DefaultHostname: *defaultHost})
 		p = &s.Proxies[len(s.Proxies)-1]
 	}
 	p.LocalScheme, p.LocalIP, p.LocalPort = scheme, ip, port
@@ -119,6 +128,15 @@ func publish(ctx context.Context, b *bunny, s *State, p *Proxy) error {
 	z, err := b.getPullZone(ctx, s.AppPullZoneID)
 	if err != nil {
 		return err
+	}
+	if p.DefaultHostname {
+		// The zone's own hostname already exists and has Bunny's wildcard
+		// certificate: nothing to add, no DNS, nothing logged in CT.
+		if err := b.do(ctx, http.MethodPost, fmt.Sprintf("/pullzone/%d/setForceSSL", s.AppPullZoneID), map[string]any{"Hostname": p.Hostname, "ForceSSL": true}, nil); err != nil {
+			return err
+		}
+		fmt.Printf("https://%s/ serves %s. The name is hard to guess but not secret: anyone who learns it can reach the service.\n", p.Hostname, p.Name)
+		return nil
 	}
 	found, hasCert := z.hostname(p.Hostname)
 	if !found {
@@ -247,7 +265,7 @@ func cmdRemove(args []string) error {
 		}
 		fmt.Printf("Deleted DNS record %d.\n", p.DNSRecordID)
 	}
-	if s.AppPullZoneID != 0 {
+	if s.AppPullZoneID != 0 && !p.DefaultHostname { // the zone's own hostname stays
 		err := b.do(ctx, http.MethodDelete, fmt.Sprintf("/pullzone/%d/removeHostname", s.AppPullZoneID), map[string]string{"Hostname": p.Hostname}, nil)
 		if err != nil && !isNotFound(err) {
 			return err
