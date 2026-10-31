@@ -136,7 +136,9 @@ func publish(ctx context.Context, b *bunny, s *State, p *Proxy) error {
 		}
 		if zone == nil {
 			external = true
-			fmt.Printf("\nDNS for %s is not in Bunny DNS. Create this record with your DNS provider:\n  %s. CNAME %s.b-cdn.net.\n\n", p.Hostname, p.Hostname, z.Name)
+			fmt.Printf("\nDNS for %s is not in Bunny DNS. Create this record with your DNS provider:\n  %s. CNAME %s.b-cdn.net.\n", p.Hostname, p.Hostname, z.Name)
+			fmt.Println("Make it DNS only, not proxied (in Cloudflare: the grey cloud), or Bunny cannot issue the certificate.")
+			fmt.Println()
 		} else {
 			for _, r := range zone.Records {
 				if strings.EqualFold(r.Name, rel) {

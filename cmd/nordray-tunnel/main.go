@@ -19,6 +19,9 @@ const (
 	userAgent  = "nordray-tunnel"
 )
 
+// version is set at release builds with -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 const usage = `nordray-tunnel: self-hosted HTTP tunnels in your own Bunny account.
 
 Operator commands (need the Bunny API key):
@@ -34,7 +37,8 @@ Agent commands (no Bunny API key):
   agent-config  Export an frpc configuration for another machine
   install-frpc  Download and verify frpc from the frp GitHub releases
 
-Run "nordray-tunnel <command> -h" for the options of a command.
+Run "nordray-tunnel <command> -h" for the options of a command,
+and "nordray-tunnel version" for the version.
 `
 
 type command struct {
@@ -61,6 +65,10 @@ func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code)
 func main() {
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
 		fmt.Print(usage)
+		return
+	}
+	if os.Args[1] == "version" || os.Args[1] == "--version" {
+		fmt.Printf("nordray-tunnel %s (frp %s)\n", version, frpVersion)
 		return
 	}
 	cmd, ok := commands[os.Args[1]]

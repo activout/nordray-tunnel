@@ -9,6 +9,9 @@ Proof of concept. See [docs/feasibility.md](docs/feasibility.md) for what was me
 Prerequisites: a Bunny account and API key, and a relay image that Magic Containers can pull.
 
 ```sh
+# A release binary from https://github.com/activout/nordray-tunnel/releases
+# (check it against SHA256SUMS, and once the repository is public:
+#  gh attestation verify <file> --repo activout/nordray-tunnel), or:
 go install github.com/activout/nordray-tunnel/cmd/nordray-tunnel@latest
 
 # Downloads frpc v0.71.1 from the frp GitHub release and verifies it against

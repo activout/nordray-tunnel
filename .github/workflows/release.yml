@@ -1,0 +1,64 @@
+# Release the nordray-tunnel CLI when a v* tag is pushed: test, build for
+# six platforms, publish SHA256SUMS and, when GitHub allows it, build
+# provenance attestations.
+#
+# GitHub artifact attestations need a public repository on the Team plan
+# (private repositories need Enterprise Cloud). While this repository is
+# private, releases carry checksums only and the run shows a warning.
+# Once public, verify a download with:
+#   gh attestation verify nordray-tunnel_<version>_<os>_<arch> --repo activout/nordray-tunnel
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: |
+          go run ./cmd/nordray-tunnel install-frpc -o .bin --frps
+          go vet ./...
+          go test ./... -count=1
+
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os=${target%/*}; arch=${target#*/}; ext=""
+            [ "$os" = windows ] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=$VERSION" \
+              -o "dist/nordray-tunnel_${VERSION}_${os}_${arch}${ext}" ./cmd/nordray-tunnel
+          done
+          (cd dist && sha256sum nordray-tunnel_* > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Attest build provenance
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/nordray-tunnel_*
+
+      - name: No attestations while the repository is private
+        if: github.event.repository.visibility != 'public'
+        run: echo "::warning::Repository is private on the Team plan, so GitHub cannot create attestations; this release has checksums only."
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "nordray-tunnel $GITHUB_REF_NAME"
