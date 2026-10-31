@@ -102,7 +102,8 @@ func (f *fakeBunny) serve(w http.ResponseWriter, r *http.Request) {
 			notFound()
 			return
 		}
-		reply(map[string]any{"id": "APP1", "status": "active", "containerTemplates": []any{map[string]any{"id": "C1", "endpoints": f.app.endpoints}}})
+		reply(map[string]any{"id": "APP1", "status": "active", "containerTemplates": []any{map[string]any{
+			"id": "C1", "imageTag": "sha-test", "imageDigest": "sha256:" + strings.Repeat("ab", 32), "environmentVariables": f.env, "endpoints": f.app.endpoints}}})
 	case key == "GET /mc/apps/APP1/endpoints":
 		reply(map[string]any{"items": f.app.endpoints})
 	case key == "PATCH /mc/apps/APP1/containers/C1":
@@ -247,6 +248,9 @@ func TestSetupIsIdempotent(t *testing.T) {
 	}
 	if n := f.calls["POST /shield/shield-zone"]; n != 1 {
 		t.Errorf("created Shield %d times", n)
+	}
+	if n := f.calls["PATCH /mc/apps/APP1/containers/C1"]; n != 0 {
+		t.Errorf("an unchanged rerun patched the container %d times, restarting the relay", n)
 	}
 	if again.Image.RegistryID != "5370" {
 		t.Errorf("registry %q; want the private registry for the host", again.Image.RegistryID)
@@ -473,5 +477,37 @@ func TestInstallFrpcVerifiesChecksum(t *testing.T) {
 	}
 	if installedFrpc(frpVersion) != "" {
 		t.Error("frpc installed despite the mismatch")
+	}
+}
+
+func TestFileSecretStore(t *testing.T) {
+	setupTest(t)
+	t.Setenv("NORDRAY_TUNNEL_SECRET_STORE", "file")
+	tok, err := ensureSecret("home", "tunnel-token")
+	if err != nil || len(tok) != 64 {
+		t.Fatalf("%q %v", tok, err)
+	}
+	if again, _ := ensureSecret("home", "tunnel-token"); again != tok {
+		t.Error("token not persisted")
+	}
+	path, _, _ := secretsFile()
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("secrets.json: %v %v", fi, err)
+	}
+	deleteSecret("home", "tunnel-token")
+	if v, _ := getSecret("home", "tunnel-token"); v != "" {
+		t.Error("not deleted")
+	}
+}
+
+func TestFindFrpcMakesRelativePathAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "frpc"), []byte("#!/bin/sh\necho 0.71.1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	bin, err := findFrpc("./frpc")
+	if err != nil || !filepath.IsAbs(bin) {
+		t.Fatalf("%q %v", bin, err)
 	}
 }

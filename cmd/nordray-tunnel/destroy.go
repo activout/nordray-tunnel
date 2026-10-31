@@ -115,7 +115,7 @@ func destroy(ctx context.Context, b *bunny, s *State) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	fmt.Printf("Installation %q is gone. The Bunny API key stays in the credential store for other installations.\n", s.Name)
+	fmt.Printf("Installation %q is gone. A Bunny API key saved in the credential store is kept for other installations.\n", s.Name)
 	return nil
 }
 

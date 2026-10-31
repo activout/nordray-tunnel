@@ -115,8 +115,9 @@ func TestForceRejectsPlaintextAgent(t *testing.T) {
 	t.Logf("plaintext agent rejected: %s", lastLine(out))
 }
 
-// TestForceBlocksWSS documents why "both" mode cannot force TLS: WSS agents
-// reach frps as plain WebSocket once the CDN has terminated TLS.
+// TestForceBlocksWSS documents why the transports are exclusive: WSS agents
+// reach frps as plain WebSocket once the CDN has terminated TLS, so a relay
+// that forces frp TLS for Anycast agents cannot serve them.
 func TestForceBlocksWSS(t *testing.T) {
 	bin := binDir(t)
 	r := startDirectRelay(t, bin, newPKI(t), true)
@@ -124,14 +125,3 @@ func TestForceBlocksWSS(t *testing.T) {
 	expectLoginFailureOutput(t, bin, cfg)
 }
 
-func TestBothModeServesWSSAndDirect(t *testing.T) {
-	bin := binDir(t)
-	p := newPKI(t)
-	r := startDirectRelay(t, bin, p, false)
-	wss := writeFrpc(t, r, token, trusted(r), proxy{"a", "a.example.test", fixture(t, "app-a")})
-	direct := writeFrpcTo(t, r.direct, "tcp", token, directTLS(p.caFile, relayName), proxy{"b", "b.example.test", fixture(t, "app-b")})
-	start(t, filepath.Join(bin, "frpc"), nil, "-c", wss)
-	start(t, filepath.Join(bin, "frpc"), nil, "-c", direct)
-	waitRoute(t, r, "a.example.test")
-	waitRoute(t, r, "b.example.test")
-}

@@ -144,7 +144,7 @@ func reconcile(ctx context.Context, b *bunny, s *State, yes bool) error {
 		if err := createApp(ctx, b, s, env); err != nil {
 			return err
 		}
-	} else if err := updateApp(ctx, b, s, env); err != nil {
+	} else if err := updateApp(ctx, b, s, env, !containerCurrent(app, s, env)); err != nil {
 		return err
 	}
 	if err := readEndpoints(ctx, b, s); err != nil {
@@ -171,7 +171,7 @@ func plan(s *State, app *mcApp) []action {
 		a = append(a, action{"create", fmt.Sprintf("CDN endpoint app → container %d (own pull zone, Host forwarded, no cache, no WebSockets)", vhostPort)})
 		a = append(a, action{"create", "Shield zone on the app pull zone (WAF block, DDoS medium, no learning mode)"})
 	} else {
-		a = append(a, action{"update", fmt.Sprintf("Magic Containers app %s: image %s and environment (restarts the relay)", s.AppID, s.Image)})
+		a = append(a, action{"check", fmt.Sprintf("Magic Containers app %s: image %s and environment (restarts the relay only if they changed)", s.AppID, s.Image)})
 	}
 	switch s.Transport {
 	case "wss":
@@ -194,7 +194,7 @@ func plan(s *State, app *mcApp) []action {
 
 func needsConfirmation(actions []action) bool {
 	for _, a := range actions {
-		if a.verb != "update" {
+		if a.verb != "check" {
 			return true
 		}
 	}
@@ -335,16 +335,41 @@ func createApp(ctx context.Context, b *bunny, s *State, env []mcEnv) error {
 	return s.save()
 }
 
-func updateApp(ctx context.Context, b *bunny, s *State, env []mcEnv) error {
+// containerCurrent reports whether the running template already has the
+// desired image and environment, so setup can skip a needless restart.
+func containerCurrent(app *mcApp, s *State, env []mcEnv) bool {
+	if len(app.ContainerTemplates) != 1 {
+		return false
+	}
+	c := app.ContainerTemplates[0]
+	if c.Digest != s.Image.Digest || c.ImageTag != s.Image.Tag || len(c.Env) != len(env) {
+		return false
+	}
+	have := map[string]string{}
+	for _, e := range c.Env {
+		have[e.Name] = e.Value
+	}
+	for _, e := range env {
+		if v, ok := have[e.Name]; !ok || v != e.Value {
+			return false
+		}
+	}
+	return true
+}
+
+func updateApp(ctx context.Context, b *bunny, s *State, env []mcEnv, patch bool) error {
 	if s.ContainerID == "" {
 		return errors.New("state has no container ID; run setup again after checking the app in the dashboard")
 	}
 	base := "/mc/apps/" + url.PathEscape(s.AppID) + "/containers/" + url.PathEscape(s.ContainerID)
-	err := b.do(ctx, http.MethodPatch, base, map[string]any{
-		"imageTag": s.Image.Tag, "imageDigest": s.Image.Digest, "imageRegistryId": s.Image.RegistryID, "environmentVariables": env,
-	}, nil)
-	if err != nil {
-		return err
+	if patch {
+		err := b.do(ctx, http.MethodPatch, base, map[string]any{
+			"imageTag": s.Image.Tag, "imageDigest": s.Image.Digest, "imageRegistryId": s.Image.RegistryID, "environmentVariables": env,
+		}, nil)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Updated the relay container; it restarts now.")
 	}
 	eps, err := b.listEndpoints(ctx, s.AppID)
 	if err != nil {

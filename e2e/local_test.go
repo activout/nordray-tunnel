@@ -2,8 +2,9 @@
 // terminated by a TLS reverse proxy, the way Bunny CDN terminates it in front
 // of the relay container.
 //
-// Binaries are taken from FRP_BIN_DIR (default ../.bin). The tests are skipped
-// when the binaries are missing.
+// Binaries are taken from FRP_BIN_DIR (default ../.bin), installed with
+// "go run ./cmd/nordray-tunnel install-frpc -o .bin --frps". The tests are
+// skipped when the binaries are missing.
 package e2e
 
 import (
@@ -34,18 +35,24 @@ func binDir(t *testing.T) string {
 		dir = "../.bin"
 	}
 	if _, err := os.Stat(filepath.Join(dir, "frps")); err != nil {
-		t.Skipf("frp binaries not found in %s (set FRP_BIN_DIR)", dir)
+		t.Skipf("frp binaries not found in %s; run: go run ./cmd/nordray-tunnel install-frpc -o .bin --frps", dir)
 	}
 	return dir
 }
 
-func freePort(t *testing.T) int {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+// freePorts returns n distinct free ports. All listeners stay open until
+// every port is chosen, so the kernel cannot hand out the same one twice.
+func freePorts(t *testing.T, n int) []int {
+	ports := make([]int, n)
+	for i := range ports {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer l.Close()
+		ports[i] = l.Addr().(*net.TCPAddr).Port
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	return ports
 }
 
 func start(t *testing.T, name string, env []string, args ...string) *exec.Cmd {
@@ -77,7 +84,8 @@ type relay struct {
 // TLS-terminating reverse proxy.
 func startRelay(t *testing.T, bin string, env ...string) relay {
 	dir := t.TempDir()
-	bindPort, vhostPort := freePort(t), freePort(t)
+	ports := freePorts(t, 3)
+	bindPort, vhostPort, wssPort := ports[0], ports[1], ports[2]
 	cfg, err := os.ReadFile("../relay/frps.toml")
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +100,6 @@ func startRelay(t *testing.T, bin string, env ...string) relay {
 
 	backend, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", bindPort))
 	front := httptest.NewUnstartedServer(httputil.NewSingleHostReverseProxy(backend))
-	wssPort := freePort(t)
 	front.Listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", wssPort))
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +171,8 @@ func lastLine(s string) string {
 
 // The front door certificate from httptest is issued for example.com.
 func trusted(r relay) string {
-	return fmt.Sprintf("transport.tls.trustedCaFile = %q\ntransport.tls.serverName = \"example.com\"", r.caFile)
+	// tls.enable mirrors the generated agent configuration.
+	return fmt.Sprintf("transport.tls.enable = true\ntransport.tls.trustedCaFile = %q\ntransport.tls.serverName = \"example.com\"", r.caFile)
 }
 
 // fixture identifies itself, echoes request bodies and serves sized downloads.
