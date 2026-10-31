@@ -52,6 +52,13 @@ type frpcProxy struct {
 	RequestHeaders struct {
 		Set map[string]string `toml:"set"`
 	} `toml:"requestHeaders"`
+	Plugin *frpcPlugin `toml:"plugin,omitempty"`
+}
+
+// frpcPlugin is the http2https client plugin, used for HTTPS local targets.
+type frpcPlugin struct {
+	Type      string `toml:"type"`
+	LocalAddr string `toml:"localAddr"`
 }
 
 // caFileName is written next to frpc.toml and referenced relatively; run
@@ -103,6 +110,10 @@ func buildFrpcConfig(s *State, token string, admin *adminServer) (*frpcConfig, e
 		// so tell the service the truth. frps applies this after its own
 		// X-Forwarded-* handling (pkg/util/vhost/http.go).
 		px.RequestHeaders.Set = map[string]string{"X-Forwarded-Proto": "https"}
+		if p.LocalScheme == "https" {
+			// Unverified TLS to the target: frp limitation, see issue #9.
+			px.Plugin = &frpcPlugin{Type: "http2https", LocalAddr: net.JoinHostPort(p.LocalIP, strconv.Itoa(p.LocalPort))}
+		}
 		c.Proxies = append(c.Proxies, px)
 	}
 	return c, nil

@@ -47,6 +47,7 @@ type State struct {
 type Proxy struct {
 	Name        string `json:"name"`
 	Hostname    string `json:"hostname"`
+	LocalScheme string `json:"localScheme,omitempty"` // "http" (default) or "https"
 	LocalIP     string `json:"localIp"`
 	LocalPort   int    `json:"localPort"`
 	DNSZoneID   int64  `json:"dnsZoneId,omitempty"`
