@@ -444,13 +444,21 @@ func TestParseImageAndLocal(t *testing.T) {
 			t.Errorf("accepted %q", bad)
 		}
 	}
-	if ip, port, err := parseLocal("http://127.0.0.1:8080"); err != nil || ip != "127.0.0.1" || port != 8080 {
-		t.Errorf("%s %d %v", ip, port, err)
+	if sc, ip, port, err := parseLocal("http://127.0.0.1:8080"); err != nil || sc != "http" || ip != "127.0.0.1" || port != 8080 {
+		t.Errorf("%s %s %d %v", sc, ip, port, err)
 	}
-	for _, bad := range []string{"https://127.0.0.1:8443", "127.0.0.1:8080", "http://u:p@host", "http://host/path"} {
-		if _, _, err := parseLocal(bad); err == nil {
+	if sc, ip, port, err := parseLocal("https://nas.lan"); err != nil || sc != "https" || ip != "nas.lan" || port != 443 {
+		t.Errorf("%s %s %d %v", sc, ip, port, err)
+	}
+	for _, bad := range []string{"ftp://host", "127.0.0.1:8080", "http://u:p@host", "http://host/path"} {
+		if _, _, _, err := parseLocal(bad); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
+	}
+	s := &State{Name: "x", Transport: "wss", TunnelHost: "t", Proxies: []Proxy{{Name: "nas", Hostname: "nas.example.se", LocalScheme: "https", LocalIP: "nas.lan", LocalPort: 8443}}}
+	cfg, err := buildFrpcConfig(s, "tok", nil)
+	if err != nil || cfg.Proxies[0].Plugin == nil || cfg.Proxies[0].Plugin.Type != "http2https" || cfg.Proxies[0].Plugin.LocalAddr != "nas.lan:8443" {
+		t.Errorf("https proxy: %+v %v", cfg.Proxies[0], err)
 	}
 }
 

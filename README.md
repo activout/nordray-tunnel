@@ -110,7 +110,7 @@ Recheck [Bunny's pricing](https://bunny.net/docs/magic-containers/pricing) befor
 
 ## Limitations
 
-- Local targets must be plain HTTP. HTTPS local targets are not supported yet.
+- HTTPS local targets (`--local https://host:port`) use frp's `http2https` plugin, which **does not verify the target's certificate**: the hop from the agent to the service is encrypted but could be intercepted on the network between them. Prefer `http://127.0.0.1` targets, or HTTPS targets on the same machine. Tracked in [#9](https://github.com/activout/nordray-tunnel/issues/9) and upstream in [fatedier/frp#5590](https://github.com/fatedier/frp/issues/5590).
 - One replica in one region. A relay restart or pod recreation interrupts service for about 30 seconds, and agents reconnect on their own.
 - No origin authentication gateway (see Trust boundaries).
 - Visitor-side WebSockets are not configured.

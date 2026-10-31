@@ -44,7 +44,11 @@ func cmdStatus(args []string) error {
 				state = a
 			}
 		}
-		fmt.Printf("  %-16s https://%s → http://%s:%d  [%s]\n", p.Name, p.Hostname, p.LocalIP, p.LocalPort, state)
+		scheme := p.LocalScheme
+		if scheme == "" {
+			scheme = "http"
+		}
+		fmt.Printf("  %-16s https://%s → %s://%s:%d  [%s]\n", p.Name, p.Hostname, scheme, p.LocalIP, p.LocalPort, state)
 	}
 
 	if !*remote {

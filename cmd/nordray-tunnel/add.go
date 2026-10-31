@@ -29,7 +29,7 @@ func cmdAdd(args []string) error {
 	if !hostnamePattern.MatchString(h) {
 		return fmt.Errorf("--hostname %q is not a valid public hostname", *hostname)
 	}
-	ip, port, err := parseLocal(*local)
+	scheme, ip, port, err := parseLocal(*local)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,11 @@ func cmdAdd(args []string) error {
 		s.Proxies = append(s.Proxies, Proxy{Name: proxyName, Hostname: h})
 		p = &s.Proxies[len(s.Proxies)-1]
 	}
-	p.LocalIP, p.LocalPort = ip, port
+	p.LocalScheme, p.LocalIP, p.LocalPort = scheme, ip, port
+	if scheme == "https" {
+		fmt.Println("Note: the connection from the agent to " + *local + " is encrypted, but its certificate is NOT verified.")
+		fmt.Println("frp's http2https plugin cannot verify it yet (https://github.com/activout/nordray-tunnel/issues/9).")
+	}
 	if err := s.save(); err != nil {
 		return err
 	}
@@ -91,21 +95,22 @@ func parseWithName(fs interface {
 	return "", errors.New("missing proxy name")
 }
 
-// parseLocal accepts http://host[:port]. HTTPS local targets are not
-// supported yet: they need verified certificate handling in frpc.
-func parseLocal(raw string) (string, int, error) {
+// parseLocal accepts http://host[:port] and https://host[:port]. HTTPS
+// targets go through frp's http2https plugin, which does not verify the
+// target's certificate (see issue #9).
+func parseLocal(raw string) (scheme, host string, port int, err error) {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
-		return "", 0, fmt.Errorf("--local must be http://host[:port], got %q (HTTPS local targets are not supported yet)", raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
+		return "", "", 0, fmt.Errorf("--local must be http://host[:port] or https://host[:port], got %q", raw)
 	}
-	port := 80
+	port = map[string]int{"http": 80, "https": 443}[u.Scheme]
 	if p := u.Port(); p != "" {
 		port, err = strconv.Atoi(p)
 		if err != nil || port < 1 || port > 65535 {
-			return "", 0, fmt.Errorf("invalid port in --local %q", raw)
+			return "", "", 0, fmt.Errorf("invalid port in --local %q", raw)
 		}
 	}
-	return u.Hostname(), port, nil
+	return u.Scheme, u.Hostname(), port, nil
 }
 
 // publish attaches the hostname to the app pull zone, creates its DNS record
