@@ -1,0 +1,111 @@
+# Quick live test: upgrades the standing installation behind
+# tunnel-test.nordray.net to the relay image built from this commit, with an
+# agent connected throughout, then runs the live checks. It touches neither
+# DNS nor anything else: the only change in Bunny is the container update.
+#
+# The standing installation is created once by an operator (see
+# docs/live-tests.md) and described by:
+#   variable LIVE_QUICK_STATE         its state.json (IDs and addresses only)
+#   secret   LIVE_QUICK_TUNNEL_TOKEN  its tunnel token
+#   secret   BUNNY_API_KEY            in the environment live-bunny
+name: live-quick
+
+on:
+  workflow_dispatch:
+
+# Shares the lock with live-e2e: both use the same Bunny account.
+concurrency:
+  group: live-bunny
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  NORDRAY_TUNNEL_SECRET_STORE: file
+  RELAY_IMAGE: ghcr.io/activout/nordray-tunnel-relay:sha-${{ github.sha }}
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    environment: live-bunny
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Restore the standing installation
+        env:
+          STATE: ${{ vars.LIVE_QUICK_STATE }}
+          TOKEN: ${{ secrets.LIVE_QUICK_TUNNEL_TOKEN }}
+        run: |
+          [ -n "$STATE" ] && [ -n "$TOKEN" ] || { echo "::error::LIVE_QUICK_STATE or LIVE_QUICK_TUNNEL_TOKEN is not set"; exit 1; }
+          cfg="$RUNNER_TEMP/config"
+          echo "XDG_CONFIG_HOME=$cfg" >> "$GITHUB_ENV"
+          umask 077
+          mkdir -p "$cfg/nordray-tunnel/quick"
+          printf '%s' "$STATE" > "$cfg/nordray-tunnel/quick/state.json"
+          jq -n --arg t "$TOKEN" '{"quick/tunnel-token": $t}' > "$cfg/nordray-tunnel/secrets.json"
+          [ "$(jq -r .name "$cfg/nordray-tunnel/quick/state.json")" = quick ] || { echo "::error::LIVE_QUICK_STATE is not the state of installation quick"; exit 1; }
+          echo "LIVE_HOSTNAME=$(jq -r '.proxies[0].hostname' "$cfg/nordray-tunnel/quick/state.json")" >> "$GITHUB_ENV"
+          echo "LIVE_DEFAULT_HOST=$(jq -r '.appPullZoneName' "$cfg/nordray-tunnel/quick/state.json").b-cdn.net" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the relay image for this commit
+        uses: docker/build-push-action@v6
+        with:
+          context: relay
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.RELAY_IMAGE }}
+
+      - name: Build the CLI and the fixture, install frpc
+        run: |
+          go build -o nordray-tunnel ./cmd/nordray-tunnel
+          go build -o fixture ./e2e/fixture
+          ./nordray-tunnel install-frpc -o .bin
+
+      - name: Start the private service and the agent
+        run: |
+          nohup ./fixture -addr 127.0.0.1:18081 > fixture.log 2>&1 &
+          nohup ./nordray-tunnel run --name quick --frpc .bin/frpc > agent.log 2>&1 &
+          for i in $(seq 1 30); do
+            ./nordray-tunnel status --name quick | grep -q '\[running\]' && break
+            sleep 2
+          done
+          ./nordray-tunnel status --name quick
+
+      - name: Upgrade the relay with the agent connected
+        env:
+          BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+        run: |
+          # Probe once a second during the upgrade to record any outage.
+          (while true; do printf '%s %s\n' "$(date +%T)" "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "https://$LIVE_HOSTNAME/probe")"; sleep 1; done) > probe.log &
+          probe=$!
+          ./nordray-tunnel update --name quick --image "$RELAY_IMAGE" --yes --api-key-env BUNNY_API_KEY
+          sleep 45
+          kill $probe
+          echo "Probe transitions (time, HTTP status):"
+          awk '$2 != last { print; last = $2 }' probe.log
+
+      - name: Live checks through Bunny CDN
+        run: go test -tags live ./e2e/live -count=1 -v
+
+      - name: Keep logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-quick-${{ github.run_id }}
+          path: |
+            agent.log
+            fixture.log
+            probe.log
+          if-no-files-found: ignore

@@ -4,10 +4,11 @@
 #
 # Requires the environment "live-bunny" with the secret BUNNY_API_KEY.
 #
+# Every run publishes a new hostname, e2e-<run id>.nordray.net, so repeated
+# runs do not hit the per-hostname certificate limit. For a quick check that
+# only upgrades the standing installation, use live-quick instead.
+#
 # Cautions:
-# - The hostname is fixed. Bunny's free certificates are, as far as known,
-#   Let's Encrypt, which allows about five duplicate certificates per week
-#   for the same hostname, so keep runs to a handful a week.
 # - Each run leaves a free Shield zone behind: the Shield API cannot delete
 #   them.
 # - If destroy fails, the run's state.json artifact identifies every
@@ -39,7 +40,7 @@ permissions:
   packages: write
 
 env:
-  LIVE_HOSTNAME: tunnel-test.nordray.net
+  LIVE_HOSTNAME: e2e-${{ github.run_id }}.nordray.net
   NORDRAY_TUNNEL_SECRET_STORE: file
   RELAY_IMAGE: ghcr.io/activout/nordray-tunnel-relay:sha-${{ github.sha }}
 
