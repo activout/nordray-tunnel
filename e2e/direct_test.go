@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,11 +62,16 @@ func newPKI(t *testing.T) pki {
 	}
 }
 
-// For direct TCP the TLS handshake runs lazily under the mux session, so a
-// verification failure surfaces as "session shutdown" rather than an x509
-// error. TestDirectTLSRoundTrip differs only in the CA/server name, which
-// isolates the cause.
-const directTLSFailure = "session shutdown"
+// For direct TCP the TLS handshake can run lazily under the mux session, so
+// depending on timing a verification failure surfaces as an x509 error or as
+// "session shutdown". TestDirectTLSRoundTrip differs only in the CA or server
+// name, which isolates the cause.
+func expectDirectTLSFailure(t *testing.T, bin, cfg string) {
+	out := expectLoginFailureOutput(t, bin, cfg)
+	if !strings.Contains(out, "x509") && !strings.Contains(out, "session shutdown") {
+		t.Fatalf("frpc failed for another reason:\n%s", out)
+	}
+}
 
 func directTLS(caFile, serverName string) string {
 	return fmt.Sprintf("transport.tls.enable = true\ntransport.tls.trustedCaFile = %q\ntransport.tls.serverName = %q", caFile, serverName)
@@ -90,7 +96,7 @@ func TestDirectTLSUntrustedCAFails(t *testing.T) {
 	r := startDirectRelay(t, bin, newPKI(t), true)
 	other := newPKI(t) // a different installation's CA
 	cfg := writeFrpcTo(t, r.direct, "tcp", token, directTLS(other.caFile, relayName), proxy{"a", "a.example.test", fixture(t, "app-a")})
-	expectLoginFailure(t, bin, cfg, directTLSFailure)
+	expectDirectTLSFailure(t, bin, cfg)
 }
 
 func TestDirectTLSWrongServerNameFails(t *testing.T) {
@@ -98,7 +104,7 @@ func TestDirectTLSWrongServerNameFails(t *testing.T) {
 	p := newPKI(t)
 	r := startDirectRelay(t, bin, p, true)
 	cfg := writeFrpcTo(t, r.direct, "tcp", token, directTLS(p.caFile, "wrong.example.org"), proxy{"a", "a.example.test", fixture(t, "app-a")})
-	expectLoginFailure(t, bin, cfg, directTLSFailure)
+	expectDirectTLSFailure(t, bin, cfg)
 }
 
 func TestForceRejectsPlaintextAgent(t *testing.T) {
