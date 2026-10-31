@@ -1,11 +1,22 @@
 # frps configuration for the Nordray Tunnels relay.
-# The tunnel token comes from the NORDRAY_TUNNEL_TOKEN environment variable
-# through frp's built-in template rendering; no shell interpolation is involved.
+# Values come from environment variables through frp's built-in template
+# rendering; no shell interpolation is involved.
 bindPort = 7000
 vhostHTTPPort = 8080
 
 auth.method = "token"
 auth.token = "{{ .Envs.NORDRAY_TUNNEL_TOKEN }}"
+
+# Direct (Anycast) agents use frp TLS with an installation-specific
+# certificate. WSS agents arrive through Bunny CDN as plain WebSocket, so
+# tls.force can only be enabled when WSS is not offered.
+{{- if .Envs.NORDRAY_TLS_CERT_FILE }}
+transport.tls.certFile = "{{ .Envs.NORDRAY_TLS_CERT_FILE }}"
+transport.tls.keyFile = "{{ .Envs.NORDRAY_TLS_KEY_FILE }}"
+{{- end }}
+{{- if eq .Envs.NORDRAY_TLS_FORCE "true" }}
+transport.tls.force = true
+{{- end }}
 
 log.to = "console"
 log.level = "{{ .Envs.NORDRAY_LOG_LEVEL }}"
