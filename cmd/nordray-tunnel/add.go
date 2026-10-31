@@ -166,6 +166,11 @@ func publish(ctx context.Context, b *bunny, s *State, p *Proxy) error {
 			return err
 		}
 	}
+	// Redirect plain HTTP to HTTPS, so the X-Forwarded-Proto: https the
+	// agent sets is always true.
+	if err := b.do(ctx, http.MethodPost, fmt.Sprintf("/pullzone/%d/setForceSSL", s.AppPullZoneID), map[string]any{"Hostname": p.Hostname, "ForceSSL": true}, nil); err != nil {
+		return err
+	}
 	waitForEdge(p.Hostname)
 	return nil
 }

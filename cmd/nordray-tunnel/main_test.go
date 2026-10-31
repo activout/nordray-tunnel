@@ -31,6 +31,7 @@ type fakeBunny struct {
 	shield    map[int64]map[string]any // by shield zone ID
 	records   map[int64]map[string]any // DNS records in zone 9 (example.se)
 	env       []mcEnv
+	forceSSL  []string
 }
 
 type fakeApp struct {
@@ -129,6 +130,8 @@ func (f *fakeBunny) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.hostnames[id] = kept
 	case p == "/pullzone/loadFreeCertificate":
+	case scan(p, "/pullzone/%d/setForceSSL", &id):
+		f.forceSSL = append(f.forceSSL, body["Hostname"].(string))
 	case scan(p, "/pullzone/%d", &id):
 		z, ok := f.zones[id]
 		if !ok {
@@ -340,6 +343,9 @@ func TestAddAndRemoveHostname(t *testing.T) {
 	if got := f.hostnames[s.AppPullZoneID]; len(got) != 1 || got[0] != "app.example.se" {
 		t.Errorf("hostnames %v", got)
 	}
+	if len(f.forceSSL) != 1 || f.forceSSL[0] != "app.example.se" {
+		t.Errorf("force SSL %v", f.forceSSL)
+	}
 	// Publishing again neither duplicates the hostname nor the record.
 	if err := publish(context.Background(), client(), s, &s.Proxies[0]); err != nil {
 		t.Fatal(err)
@@ -393,6 +399,10 @@ func TestAgentFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := back["transport"].(map[string]any)
+	px := back["proxies"].([]map[string]any)[0]
+	if px["requestHeaders"].(map[string]any)["set"].(map[string]any)["X-Forwarded-Proto"] != "https" {
+		t.Errorf("proxy headers: %v", px)
+	}
 	if back["serverPort"] != int64(443) || tr["protocol"] != "wss" || tr["tls"].(map[string]any)["trustedCaFile"] != caFileName {
 		t.Errorf("frpc.toml: %v", back)
 	}
@@ -445,4 +455,23 @@ func must[T any](v T, err error) T {
 		panic(err)
 	}
 	return v
+}
+
+func TestInstallFrpcVerifiesChecksum(t *testing.T) {
+	// A fake release with a tar.gz holding frpc; the checksum does not match
+	// the pinned one, so the install must refuse it.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "not the real archive")
+	}))
+	defer srv.Close()
+	githubBaseURL = srv.URL
+	dir := t.TempDir()
+	binDir = func(v string) (string, error) { return filepath.Join(dir, v), nil }
+	_, err := installFrpc(frpVersion)
+	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("want checksum mismatch, got %v", err)
+	}
+	if installedFrpc(frpVersion) != "" {
+		t.Error("frpc installed despite the mismatch")
+	}
 }

@@ -123,11 +123,15 @@ func cmdRun(args []string) error {
 var versionPattern = regexp.MustCompile(`\d+\.\d+\.\d+`)
 
 func findFrpc(explicit string) (string, error) {
+	// Order: --frpc, the version install-frpc put in place, then PATH.
 	bin := explicit
+	if bin == "" {
+		bin = installedFrpc(frpVersion)
+	}
 	if bin == "" {
 		var err error
 		if bin, err = exec.LookPath("frpc"); err != nil {
-			return "", fmt.Errorf("frpc %s not found in PATH; install it from https://github.com/fatedier/frp/releases/tag/v%s (verify the checksum) or pass --frpc", frpVersion, frpVersion)
+			return "", fmt.Errorf("frpc not found; run: nordray-tunnel install-frpc (or pass --frpc)")
 		}
 	}
 	out, err := exec.Command(bin, "-v").Output()

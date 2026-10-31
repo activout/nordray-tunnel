@@ -44,11 +44,14 @@ type frpcConfig struct {
 }
 
 type frpcProxy struct {
-	Name          string   `toml:"name"`
-	Type          string   `toml:"type"`
-	LocalIP       string   `toml:"localIP"`
-	LocalPort     int      `toml:"localPort"`
-	CustomDomains []string `toml:"customDomains"`
+	Name           string   `toml:"name"`
+	Type           string   `toml:"type"`
+	LocalIP        string   `toml:"localIP"`
+	LocalPort      int      `toml:"localPort"`
+	CustomDomains  []string `toml:"customDomains"`
+	RequestHeaders struct {
+		Set map[string]string `toml:"set"`
+	} `toml:"requestHeaders"`
 }
 
 // caFileName is written next to frpc.toml and referenced relatively; run
@@ -92,7 +95,13 @@ func buildFrpcConfig(s *State, token string, admin *adminServer) (*frpcConfig, e
 	}
 	c.Log.To, c.Log.Level = "console", "info"
 	for _, p := range s.Proxies {
-		c.Proxies = append(c.Proxies, frpcProxy{Name: p.Name, Type: "http", LocalIP: p.LocalIP, LocalPort: p.LocalPort, CustomDomains: []string{p.Hostname}})
+		px := frpcProxy{Name: p.Name, Type: "http", LocalIP: p.LocalIP, LocalPort: p.LocalPort, CustomDomains: []string{p.Hostname}}
+		// frps sets X-Forwarded-Proto: http because Bunny reaches it over
+		// HTTP. Visitors always use HTTPS (add forces it on the hostname),
+		// so tell the service the truth. frps applies this after its own
+		// X-Forwarded-* handling (pkg/util/vhost/http.go).
+		px.RequestHeaders.Set = map[string]string{"X-Forwarded-Proto": "https"}
+		c.Proxies = append(c.Proxies, px)
 	}
 	return c, nil
 }

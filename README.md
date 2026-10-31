@@ -6,10 +6,15 @@ Proof of concept. See [docs/feasibility.md](docs/feasibility.md) for what was me
 
 ## Quickstart
 
-Prerequisites: a Bunny account and API key, frpc v0.71.1 in `PATH` (from the [frp release](https://github.com/fatedier/frp/releases/tag/v0.71.1), verify its checksum), and a relay image that Magic Containers can pull.
+Prerequisites: a Bunny account and API key, and a relay image that Magic Containers can pull.
 
 ```sh
 go install github.com/activout/nordray-tunnel/cmd/nordray-tunnel@latest
+
+# Downloads frpc v0.71.1 from the frp GitHub release and verifies it against
+# checksums built into nordray-tunnel. --version latest fetches the newest
+# release instead (untested, checksum from the release itself).
+nordray-tunnel install-frpc
 
 # Prints the resources and costs, asks for confirmation, then provisions.
 # The API key is asked for once (hidden) and kept in the OS credential store.
@@ -52,7 +57,7 @@ agent (frpc) ──frp TLS──> Anycast IPv4 :7000 ─────────
 
 - **Agents** authenticate with one installation token. Every holder of the token is a trusted operator: the token does not limit which hostnames an agent may register. This is not tenant isolation.
 - **TLS to the relay is always verified.** frpc skips certificate verification when no CA file is configured (frp v0.71.1, for wss and TLS alike), so the generated configuration always includes `ca.pem`. For `wss` that is the NSS (Mozilla) root set shipped in this binary. For `anycast` it is an installation CA whose private key is discarded after issuing the relay certificate.
-- **Visitors** reach services through Shield (WAF in blocking mode, DDoS protection, no learning mode). Their `Authorization` and other headers reach your service unchanged. `X-Forwarded-For` is set by Bunny. `X-Forwarded-Proto` reads `http`, because Bunny reaches the relay over HTTP.
+- **Visitors** reach services through Shield (WAF in blocking mode, DDoS protection, no learning mode). Their `Authorization` and other headers reach your service unchanged. Like any reverse proxy chain, Bunny and frps add `X-Forwarded-For` (client first, then the CDN edge), `X-Forwarded-Host`, `X-Real-Ip`, `Via` and Bunny's `Cdn-*` headers. frps would report `X-Forwarded-Proto: http`, because Bunny reaches it over HTTP, so the generated agent configuration sets it to `https` and `add` forces HTTPS on the hostname.
 - **Origin authentication** is not implemented: services are treated as public websites. Measured so far, the relay is reachable only through its own pull zones (see the feasibility report). Whether other Magic Containers apps can reach it internally has **not been verified yet**. Do not publish anything you would not put on the public internet.
 - Shield does not inspect traffic inside the tunnel, only visitor requests.
 

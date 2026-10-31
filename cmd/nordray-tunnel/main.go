@@ -32,6 +32,7 @@ Operator commands (need the Bunny API key):
 Agent commands (no Bunny API key):
   run           Run frpc with the generated configuration
   agent-config  Export an frpc configuration for another machine
+  install-frpc  Download and verify frpc from the frp GitHub releases
 
 Run "nordray-tunnel <command> -h" for the options of a command.
 `
@@ -49,6 +50,7 @@ var commands = map[string]command{
 	"destroy":      {cmdDestroy},
 	"run":          {cmdRun},
 	"agent-config": {cmdAgentConfig},
+	"install-frpc": {cmdInstallFrpc},
 }
 
 // exitError carries a child process exit status out of run.
