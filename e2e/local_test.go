@@ -70,11 +70,12 @@ type relay struct {
 	vhost   string // http://127.0.0.1:<vhostHTTPPort>
 	wssPort int    // TLS front door that proxies to frps bindPort
 	caFile  string // CA that signed the front door certificate
+	direct  int    // frps bindPort, as reached through Anycast
 }
 
 // startRelay runs frps with the real relay config (ports rewritten) behind a
 // TLS-terminating reverse proxy.
-func startRelay(t *testing.T, bin string) relay {
+func startRelay(t *testing.T, bin string, env ...string) relay {
 	dir := t.TempDir()
 	bindPort, vhostPort := freePort(t), freePort(t)
 	cfg, err := os.ReadFile("../relay/frps.toml")
@@ -87,7 +88,7 @@ func startRelay(t *testing.T, bin string) relay {
 	if err := os.WriteFile(path, []byte(local), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	start(t, filepath.Join(bin, "frps"), []string{"NORDRAY_TUNNEL_TOKEN=" + token, "NORDRAY_LOG_LEVEL=info"}, "-c", path)
+	start(t, filepath.Join(bin, "frps"), append([]string{"NORDRAY_TUNNEL_TOKEN=" + token, "NORDRAY_LOG_LEVEL=info"}, env...), "-c", path)
 
 	backend, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", bindPort))
 	front := httptest.NewUnstartedServer(httputil.NewSingleHostReverseProxy(backend))
@@ -105,7 +106,7 @@ func startRelay(t *testing.T, bin string) relay {
 		t.Fatal(err)
 	}
 	waitListening(t, bindPort)
-	return relay{vhost: fmt.Sprintf("http://127.0.0.1:%d", vhostPort), wssPort: wssPort, caFile: caFile}
+	return relay{vhost: fmt.Sprintf("http://127.0.0.1:%d", vhostPort), wssPort: wssPort, caFile: caFile, direct: bindPort}
 }
 
 func waitListening(t *testing.T, port int) {
@@ -126,10 +127,14 @@ type proxy struct {
 // writeFrpc writes the frpc config shape the CLI is meant to generate.
 // tlsLines lets tests vary the trust settings.
 func writeFrpc(t *testing.T, r relay, tok, tlsLines string, proxies ...proxy) string {
+	return writeFrpcTo(t, r.wssPort, "wss", tok, tlsLines, proxies...)
+}
+
+func writeFrpcTo(t *testing.T, port int, protocol, tok, tlsLines string, proxies ...proxy) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "serverAddr = \"127.0.0.1\"\nserverPort = %d\nloginFailExit = true\n", r.wssPort)
+	fmt.Fprintf(&b, "serverAddr = \"127.0.0.1\"\nserverPort = %d\nloginFailExit = true\n", port)
 	fmt.Fprintf(&b, "auth.method = \"token\"\nauth.token = %q\n", tok)
-	b.WriteString("transport.protocol = \"wss\"\n" + tlsLines + "\n")
+	fmt.Fprintf(&b, "transport.protocol = %q\n%s\n", protocol, tlsLines)
 	for _, p := range proxies {
 		fmt.Fprintf(&b, "[[proxies]]\nname = %q\ntype = \"http\"\nlocalIP = \"127.0.0.1\"\nlocalPort = %d\ncustomDomains = [%q]\n\n",
 			p.name, p.localPort, p.domain)
@@ -139,6 +144,22 @@ func writeFrpc(t *testing.T, r relay, tok, tlsLines string, proxies ...proxy) st
 		t.Fatal(err)
 	}
 	return path
+}
+
+func expectLoginFailureOutput(t *testing.T, bin, cfg string) string {
+	cmd := exec.Command(filepath.Join(bin, "frpc"), "-c", cfg)
+	timer := time.AfterFunc(20*time.Second, func() { _ = cmd.Process.Kill() })
+	defer timer.Stop()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("frpc unexpectedly succeeded:\n%s", out)
+	}
+	return string(out)
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }
 
 // The front door certificate from httptest is issued for example.com.
@@ -192,11 +213,8 @@ func waitRoute(t *testing.T, r relay, host string) {
 
 // expectLoginFailure runs frpc with loginFailExit and expects a non-zero exit.
 func expectLoginFailure(t *testing.T, bin, cfg, wantLog string) {
-	out, err := exec.Command(filepath.Join(bin, "frpc"), "-c", cfg).CombinedOutput()
-	if err == nil {
-		t.Fatalf("frpc unexpectedly succeeded:\n%s", out)
-	}
-	if !strings.Contains(string(out), wantLog) {
+	out := expectLoginFailureOutput(t, bin, cfg)
+	if !strings.Contains(out, wantLog) {
 		t.Fatalf("frpc output lacks %q:\n%s", wantLog, out)
 	}
 }
