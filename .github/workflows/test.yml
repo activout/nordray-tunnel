@@ -8,9 +8,6 @@ on:
 permissions:
   contents: read
 
-env:
-  FRP_VERSION: 0.71.1
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,12 +16,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Fetch pinned frp and verify checksum
-        run: |
-          f=frp_${FRP_VERSION}_linux_amd64.tar.gz
-          curl -fsSLO https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/$f
-          curl -fsSL https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_sha256_checksums.txt | grep " $f\$" | sha256sum -c
-          mkdir .bin && tar xzf $f -C .bin --strip-components=1
+      - name: Install pinned frp with nordray-tunnel itself
+        run: go run ./cmd/nordray-tunnel install-frpc -o .bin --frps
       - run: go vet ./...
       - run: go test ./... -count=1
 

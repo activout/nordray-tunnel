@@ -125,7 +125,8 @@ This deletes the DNS records, the Magic Containers app (with its endpoints and a
 ## Development
 
 ```sh
-go test ./...   # e2e tests need frp v0.71.1 binaries in .bin/ (see .github/workflows/test.yml)
+go run ./cmd/nordray-tunnel install-frpc -o .bin --frps   # pinned frpc and frps for the e2e tests
+go test ./...
 ```
 
 Licensed under the Apache License 2.0. See [NOTICE](NOTICE) for frp's notice.

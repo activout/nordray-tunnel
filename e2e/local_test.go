@@ -2,8 +2,9 @@
 // terminated by a TLS reverse proxy, the way Bunny CDN terminates it in front
 // of the relay container.
 //
-// Binaries are taken from FRP_BIN_DIR (default ../.bin). The tests are skipped
-// when the binaries are missing.
+// Binaries are taken from FRP_BIN_DIR (default ../.bin), installed with
+// "go run ./cmd/nordray-tunnel install-frpc -o .bin --frps". The tests are
+// skipped when the binaries are missing.
 package e2e
 
 import (
@@ -34,7 +35,7 @@ func binDir(t *testing.T) string {
 		dir = "../.bin"
 	}
 	if _, err := os.Stat(filepath.Join(dir, "frps")); err != nil {
-		t.Skipf("frp binaries not found in %s (set FRP_BIN_DIR)", dir)
+		t.Skipf("frp binaries not found in %s; run: go run ./cmd/nordray-tunnel install-frpc -o .bin --frps", dir)
 	}
 	return dir
 }

@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,11 +61,13 @@ var binDir = func(version string) (string, error) {
 	return filepath.Join(base, "nordray-tunnel", "frp", "v"+version), nil
 }
 
-func frpcName() string {
+func frpcName() string { return exeName("frpc") }
+
+func exeName(base string) string {
 	if runtime.GOOS == "windows" {
-		return "frpc.exe"
+		return base + ".exe"
 	}
-	return "frpc"
+	return base
 }
 
 // installedFrpc returns the path of an installed frpc of the given version.
@@ -83,21 +84,42 @@ func installedFrpc(version string) string {
 }
 
 func cmdInstallFrpc(args []string) error {
-	fs, _ := newFlags("install-frpc", "[--version VERSION|latest]")
+	fs, _ := newFlags("install-frpc", "[--version VERSION|latest] [-o DIR] [--frps]")
 	version := fs.String("version", frpVersion, "frp `version` to install; the default is the version nordray-tunnel is tested with, \"latest\" asks GitHub")
+	out := fs.String("o", "", "install into this `directory` instead of the per-user default")
+	withFrps := fs.Bool("frps", false, "also install frps (for local tests; agents only need frpc)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	p, err := installFrpc(strings.TrimPrefix(*version, "v"))
+	names := []string{"frpc"}
+	if *withFrps {
+		names = append(names, "frps")
+	}
+	paths, err := installFrp(strings.TrimPrefix(*version, "v"), *out, names)
 	if err != nil {
 		return err
 	}
-	fmt.Println("Installed", p)
-	fmt.Println("nordray-tunnel run uses it automatically; --frpc overrides it.")
+	for _, p := range paths {
+		fmt.Println("Installed", p)
+	}
+	if *out == "" {
+		fmt.Println("nordray-tunnel run uses it automatically; --frpc overrides it.")
+	}
 	return nil
 }
 
+// installFrpc installs frpc into the per-user default directory.
 func installFrpc(version string) (string, error) {
+	paths, err := installFrp(version, "", []string{"frpc"})
+	if err != nil {
+		return "", err
+	}
+	return paths[0], nil
+}
+
+// installFrp downloads one frp release archive, verifies it and extracts
+// the named binaries into dir (default: binDir for the version).
+func installFrp(version, dir string, names []string) ([]string, error) {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	if version == "latest" {
 		var rel struct {
@@ -105,11 +127,11 @@ func installFrpc(version string) (string, error) {
 		}
 		resp, err := client.Get(githubAPIURL)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&rel) != nil || rel.TagName == "" {
-			return "", fmt.Errorf("could not resolve the latest frp release (HTTP %d)", resp.StatusCode)
+			return nil, fmt.Errorf("could not resolve the latest frp release (HTTP %d)", resp.StatusCode)
 		}
 		version = strings.TrimPrefix(rel.TagName, "v")
 	}
@@ -129,21 +151,23 @@ func installFrpc(version string) (string, error) {
 		fmt.Fprintf(os.Stderr, "warning: frp %s is not the version nordray-tunnel is tested with (%s); its checksum comes from the same release\n", version, frpVersion)
 		sum, err := releaseChecksum(client, base+"frp_sha256_checksums.txt", archive)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		want = sum
 	}
 
-	dir, err := binDir(version)
-	if err != nil {
-		return "", err
+	if dir == "" {
+		var err error
+		if dir, err = binDir(version); err != nil {
+			return nil, err
+		}
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
+		return nil, err
 	}
 	tmp, err := os.CreateTemp(dir, "download-*")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
@@ -151,27 +175,31 @@ func installFrpc(version string) (string, error) {
 	fmt.Printf("Downloading %s...\n", base+archive)
 	resp, err := client.Get(base + archive)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download %s: HTTP %d", archive, resp.StatusCode)
+		return nil, fmt.Errorf("download %s: HTTP %d", archive, resp.StatusCode)
 	}
 	h := sha256.New()
 	if _, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(resp.Body, 200<<20)); err != nil {
-		return "", err
+		return nil, err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != want {
-		return "", fmt.Errorf("checksum mismatch for %s: got %s, want %s", archive, got, want)
+		return nil, fmt.Errorf("checksum mismatch for %s: got %s, want %s", archive, got, want)
 	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return "", err
+	var paths []string
+	for _, n := range names {
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		out := filepath.Join(dir, exeName(n))
+		if err := extractBinary(tmp, ext, exeName(n), out); err != nil {
+			return nil, err
+		}
+		paths = append(paths, out)
 	}
-	out := filepath.Join(dir, frpcName())
-	if err := extractFrpc(tmp, ext, out); err != nil {
-		return "", err
-	}
-	return out, nil
+	return paths, nil
 }
 
 func releaseChecksum(client *http.Client, url, archive string) (string, error) {
@@ -192,9 +220,8 @@ func releaseChecksum(client *http.Client, url, archive string) (string, error) {
 	return "", fmt.Errorf("no checksum for %s in the release", archive)
 }
 
-// extractFrpc copies only the frpc binary out of the verified archive.
-func extractFrpc(f *os.File, ext, out string) error {
-	name := frpcName()
+// extractBinary copies one named binary out of the verified archive.
+func extractBinary(f *os.File, ext, name, out string) error {
 	var src io.Reader
 	switch ext {
 	case ".zip":
@@ -226,7 +253,7 @@ func extractFrpc(f *os.File, ext, out string) error {
 		for {
 			hdr, err := tr.Next()
 			if err != nil {
-				return fmt.Errorf("frpc not found in archive: %w", err)
+				return fmt.Errorf("%s not found in archive: %w", name, err)
 			}
 			if path.Base(hdr.Name) == name && hdr.Typeflag == tar.TypeReg {
 				src = tr
@@ -235,7 +262,7 @@ func extractFrpc(f *os.File, ext, out string) error {
 		}
 	}
 	if src == nil {
-		return errors.New("frpc not found in archive")
+		return fmt.Errorf("%s not found in archive", name)
 	}
 	tmp := out + ".tmp"
 	w, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
