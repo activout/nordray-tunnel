@@ -4,6 +4,10 @@
 bindPort = 7000
 vhostHTTPPort = 8080
 
+# Branded page for every proxy error: frps answers 404 for unknown
+# hostnames and for an agent or service that does not answer alike.
+custom404Page = "/etc/frp/error.html"
+
 auth.method = "token"
 auth.token = "{{ .Envs.NORDRAY_TUNNEL_TOKEN }}"
 

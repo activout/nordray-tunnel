@@ -153,4 +153,7 @@ func TestDefaultHostnameDoesNotReachService(t *testing.T) {
 	if code != http.StatusNotFound || e.Headers != nil {
 		t.Errorf("https://%s/: HTTP %d %s", host, code, fmt.Sprintf("%.120s", body))
 	}
+	if !bytes.Contains(body, []byte("Nordray Tunnel")) {
+		t.Errorf("https://%s/ does not show the Nordray Tunnel error page", host)
+	}
 }

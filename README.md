@@ -52,6 +52,7 @@ agent (frpc) ──frp TLS──> Anycast IPv4 :7000 ─────────
 - **Transports** are exclusive: `wss` (default, no fixed cost) or `anycast` (`setup --transport anycast`, one paid IPv4 shared by every agent and service). Switch by running setup again with the other transport.
 - **Visitor traffic always goes through the CDN and Shield.** The relay's HTTP port is never published on Anycast, and container ports are not reachable directly.
 - frps routes requests by `Host` and answers 404 for hostnames no agent has registered, including the pull zone's default `*.b-cdn.net` and `*.bunny.run` hostnames.
+- That 404 shows a self-contained Nordray Tunnel error page (`relay/error.html`, served through frps's `custom404Page`). frps also answers 404 when an agent or its service does not respond, so the page is worded for both. Bunny's own error pages, shown when the relay itself is unreachable, are not changed.
 
 ## Trust boundaries
 
