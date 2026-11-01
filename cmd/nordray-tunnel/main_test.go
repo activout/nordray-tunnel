@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -545,5 +546,29 @@ func TestDefaultHostnameNeedsNoDNSOrCertificate(t *testing.T) {
 	cfg, err := buildFrpcConfig(s, "tok", nil)
 	if err != nil || cfg.Proxies[0].CustomDomains[0] != host {
 		t.Errorf("frpc domains %v %v", cfg.Proxies[0].CustomDomains, err)
+	}
+}
+
+func TestWritePrivateDoesNotFollowLinks(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(dir, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "frpc.toml")
+	for _, link := range []string{path, path + ".tmp"} { // the old predictable name too
+		if err := os.Symlink(victim, link); err != nil {
+			t.Skip("symlinks unavailable:", err)
+		}
+	}
+	if err := writePrivate(path, []byte("token")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "keep" {
+		t.Fatalf("write went through a link: victim = %q", b)
+	}
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
+		t.Fatalf("frpc.toml = %v, %v; want a regular 0600 file", fi.Mode(), err)
 	}
 }

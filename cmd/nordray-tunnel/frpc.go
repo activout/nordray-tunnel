@@ -154,13 +154,21 @@ func writeAgentFiles(dir string, s *State, cfg *frpcConfig) (string, error) {
 	return path, writePrivate(filepath.Join(dir, caFileName), caBundle(s))
 }
 
+// writePrivate replaces path atomically. The temporary file has a random
+// name and is created exclusively with mode 0600, so a link planted in a
+// shared directory cannot redirect the write.
 func writePrivate(path string, data []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp, 0o600); err != nil { // WriteFile keeps an existing file's mode
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
