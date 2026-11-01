@@ -101,9 +101,10 @@ jobs:
       - name: setup
         env:
           BUNNY_API_KEY: ${{ secrets.BUNNY_API_KEY }}
+          REGION: ${{ inputs.region }} # via env, never spliced into the script
         run: >-
           ./nordray-tunnel setup --name "$INSTALLATION" --yes --api-key-env BUNNY_API_KEY
-          --region "${{ inputs.region }}" --transport "${{ matrix.transport }}" --image "$RELAY_IMAGE"
+          --region "$REGION" --transport "${{ matrix.transport }}" --image "$RELAY_IMAGE"
 
       - name: add
         env:
