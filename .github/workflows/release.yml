@@ -1,11 +1,7 @@
-# Release the nordray-tunnel CLI when a v* tag is pushed: test, build for
-# six platforms, publish SHA256SUMS and, when GitHub allows it, build
-# provenance attestations.
-#
-# GitHub artifact attestations need a public repository on the Team plan
-# (private repositories need Enterprise Cloud). While this repository is
-# private, releases carry checksums only and the run shows a warning.
-# Once public, verify a download with:
+# Release when a v* tag is pushed: test, push the relay image
+# ghcr.io/activout/nordray-tunnel-relay:<tag> (the CLI's default --image),
+# build the CLI for six platforms, and publish SHA256SUMS and build
+# provenance attestations. Verify a download with:
 #   gh attestation verify nordray-tunnel_<version>_<os>_<arch> --repo activout/nordray-tunnel
 name: release
 
@@ -17,6 +13,7 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  packages: write
 
 jobs:
   release:
@@ -32,6 +29,21 @@ jobs:
           go run ./cmd/nordray-tunnel install-frpc -o .bin --frps
           go vet ./...
           go test ./... -count=1
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push the relay image
+        uses: docker/build-push-action@v6
+        with:
+          context: relay
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/activout/nordray-tunnel-relay:${{ github.ref_name }}
 
       - name: Build
         env:
@@ -49,14 +61,9 @@ jobs:
           cat dist/SHA256SUMS
 
       - name: Attest build provenance
-        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/nordray-tunnel_*
-
-      - name: No attestations while the repository is private
-        if: github.event.repository.visibility != 'public'
-        run: echo "::warning::Repository is private on the Team plan, so GitHub cannot create attestations; this release has checksums only."
 
       - name: Publish the release
         env:

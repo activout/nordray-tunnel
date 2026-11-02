@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 )
 
-// Pinned upstream versions. The relay image is supplied with --image until an
-// official image is published.
+// Pinned upstream versions.
 const (
 	frpVersion = "0.71.1"
 	userAgent  = "nordray-tunnel"
@@ -21,6 +21,23 @@ const (
 
 // version is set at release builds with -ldflags "-X main.version=v1.2.3".
 var version = "dev"
+
+// go install module@vX.Y.Z records the tag in the build info instead.
+func init() {
+	if bi, ok := debug.ReadBuildInfo(); ok && version == "dev" &&
+		strings.HasPrefix(bi.Main.Version, "v") && !strings.Contains(bi.Main.Version, "-") {
+		version = bi.Main.Version
+	}
+}
+
+// defaultImage is the relay image released with this version of the CLI, or
+// "" for development builds, which have no matching image.
+func defaultImage() string {
+	if version == "dev" {
+		return ""
+	}
+	return "ghcr.io/activout/nordray-tunnel-relay:" + version
+}
 
 const usage = `nordray-tunnel: self-hosted HTTP tunnels in your own Bunny account.
 

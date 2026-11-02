@@ -2,15 +2,15 @@
 
 Self-hosted HTTP tunnels deployed entirely into **your own Bunny account**. Unmodified upstream [frp](https://github.com/fatedier/frp) runs as the relay (frps) in Bunny Magic Containers and as the agent (frpc) next to your private services. Visitors reach your services through Bunny CDN with Shield. No Nordray-operated relay, account, telemetry or billing intermediary is involved.
 
-Proof of concept. See [docs/feasibility.md](docs/feasibility.md) for what was measured live.
+Every claim about Bunny's behaviour below was measured live; see [docs/feasibility.md](docs/feasibility.md).
 
 ## Quickstart
 
-Prerequisites: a Bunny account and API key, and a relay image that Magic Containers can pull.
+Prerequisites: a Bunny account and API key, with GitHub Container Registry (`ghcr.io`) connected as an image registry in Magic Containers.
 
 ```sh
 # A release binary from https://github.com/activout/nordray-tunnel/releases
-# (check it against SHA256SUMS, and once the repository is public:
+# (check it against SHA256SUMS, or with
 #  gh attestation verify <file> --repo activout/nordray-tunnel), or:
 go install github.com/activout/nordray-tunnel/cmd/nordray-tunnel@latest
 
@@ -21,7 +21,8 @@ nordray-tunnel install-frpc
 
 # Prints the resources and costs, asks for confirmation, then provisions.
 # The API key is asked for once (hidden) and kept in the OS credential store.
-nordray-tunnel setup --region DK --image ghcr.io/activout/nordray-tunnel-relay:sha-<commit>
+# The relay image defaults to ghcr.io/activout/nordray-tunnel-relay:<version>.
+nordray-tunnel setup --region DK
 
 # Publish a local service. With the domain in Bunny DNS the record is created;
 # otherwise the exact CNAME to create is printed.

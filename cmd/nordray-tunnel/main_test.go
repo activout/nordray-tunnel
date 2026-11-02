@@ -549,6 +549,17 @@ func TestDefaultHostnameNeedsNoDNSOrCertificate(t *testing.T) {
 	}
 }
 
+func TestDefaultImageFollowsVersion(t *testing.T) {
+	if defaultImage() != "" {
+		t.Errorf("dev build has default image %q", defaultImage())
+	}
+	defer func(v string) { version = v }(version)
+	version = "v1.0.0"
+	if _, err := parseImage(defaultImage()); err != nil || defaultImage() != "ghcr.io/activout/nordray-tunnel-relay:v1.0.0" {
+		t.Errorf("default image %q: %v", defaultImage(), err)
+	}
+}
+
 func TestWritePrivateDoesNotFollowLinks(t *testing.T) {
 	dir := t.TempDir()
 	victim := filepath.Join(dir, "victim")
