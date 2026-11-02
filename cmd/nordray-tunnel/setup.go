@@ -23,7 +23,7 @@ func cmdSetup(args []string) error {
 	fs, name := newFlags("setup", "[options]")
 	region := fs.String("region", "", "Magic Containers region `id`, for example DK (required on first setup)")
 	transport := fs.String("transport", "", "tunnel transport: wss (default) or anycast (paid IPv4)")
-	image := fs.String("image", "", "pinned relay image `host/namespace/name:tag` (required on first setup)")
+	image := fs.String("image", "", "pinned relay image `host/namespace/name:tag` (default: the image released with this version)")
 	registryID := fs.String("registry-id", "", "Magic Containers image registry `id`, when more than one matches the image host")
 	yes := fs.Bool("yes", false, "do not ask for confirmation")
 	keyEnv := fs.String("api-key-env", "", "read the Bunny API key from this environment `variable` (opt-in for automation)")
@@ -49,6 +49,9 @@ func cmdSetup(args []string) error {
 	if s.Region == "" {
 		return errors.New("--region is required on first setup (see https://bunny.net/docs/magic-containers/regions)")
 	}
+	if *image == "" && s.Image.Name == "" {
+		*image = defaultImage()
+	}
 	if *image != "" {
 		img, err := parseImage(*image)
 		if err != nil {
@@ -58,7 +61,7 @@ func cmdSetup(args []string) error {
 		s.Image = img
 	}
 	if s.Image.Name == "" {
-		return errors.New("--image is required on first setup, for example ghcr.io/activout/nordray-tunnel-relay:sha-<commit>")
+		return errors.New("--image is required on first setup with a development build, for example ghcr.io/activout/nordray-tunnel-relay:v1.0.0")
 	}
 	key, err := bunnyAPIKey(*keyEnv)
 	if err != nil {
@@ -69,7 +72,7 @@ func cmdSetup(args []string) error {
 
 func cmdUpdate(args []string) error {
 	fs, name := newFlags("update", "--image host/namespace/name:tag")
-	image := fs.String("image", "", "pinned relay image `host/namespace/name:tag`")
+	image := fs.String("image", defaultImage(), "pinned relay image `host/namespace/name:tag` (default: the image released with this version)")
 	yes := fs.Bool("yes", false, "do not ask for confirmation")
 	keyEnv := fs.String("api-key-env", "", "read the Bunny API key from this environment `variable`")
 	if err := fs.Parse(args); err != nil {
