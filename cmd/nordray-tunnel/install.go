@@ -264,17 +264,23 @@ func extractBinary(f *os.File, ext, name, out string) error {
 	if src == nil {
 		return fmt.Errorf("%s not found in archive", name)
 	}
-	tmp := out + ".tmp"
-	w, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	// Random, exclusively created name: a link planted in a shared
+	// directory cannot redirect the write.
+	w, err := os.CreateTemp(filepath.Dir(out), "."+filepath.Base(out)+".*")
 	if err != nil {
 		return err
 	}
+	defer os.Remove(w.Name())
 	if _, err := io.Copy(w, io.LimitReader(src, 200<<20)); err != nil {
+		w.Close()
+		return err
+	}
+	if err := w.Chmod(0o755); err != nil {
 		w.Close()
 		return err
 	}
 	if err := w.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, out)
+	return os.Rename(w.Name(), out)
 }
