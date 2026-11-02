@@ -146,4 +146,8 @@ go run ./cmd/nordray-tunnel install-frpc -o .bin --frps   # pinned frpc and frps
 go test ./...
 ```
 
+## Similar projects
+
+- [tunbun](https://github.com/alectrocute/tunbun) is another option: also a Cloudflare Tunnel alternative running on Bunny CDN and Magic Containers.
+
 Licensed under the Apache License 2.0. See [NOTICE](NOTICE) for frp's notice.
