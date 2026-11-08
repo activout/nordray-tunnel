@@ -9,7 +9,11 @@ Every claim about Bunny's behaviour below was measured live; see [docs/feasibili
 Prerequisites: a Bunny account and API key, with GitHub Container Registry (`ghcr.io`) connected as an image registry in Magic Containers.
 
 ```sh
-# A release binary from https://github.com/activout/nordray-tunnel/releases
+# With Homebrew on macOS (Apple Silicon) or Linux:
+brew install activout/tap/nordray-tunnel
+
+# Or a release binary (Linux and Windows amd64/arm64, macOS Apple Silicon) from
+# https://github.com/activout/nordray-tunnel/releases
 # (check it against SHA256SUMS, or with
 #  gh attestation verify <file> --repo activout/nordray-tunnel), or:
 go install github.com/activout/nordray-tunnel/cmd/nordray-tunnel@latest
