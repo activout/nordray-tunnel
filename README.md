@@ -6,7 +6,7 @@ Every claim about Bunny's behaviour below was measured live; see [docs/feasibili
 
 ## Quickstart
 
-Prerequisites: a Bunny account and API key, with GitHub Container Registry (`ghcr.io`) connected as an image registry in Magic Containers.
+Prerequisites: a Bunny account and API key (no account yet? sign up at [bunny.net](https://bunny.net?ref=ch5ir79hyc), affiliate link: Activout gets a commission, you pay the same price), with GitHub Container Registry (`ghcr.io`) connected as an image registry in Magic Containers.
 
 ```sh
 # With Homebrew on macOS (Apple Silicon) or Linux:
