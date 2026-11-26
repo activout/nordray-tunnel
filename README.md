@@ -121,7 +121,7 @@ A service therefore sees an ordinary reverse proxy chain. If it derives the clie
 
 ## Costs to check
 
-Recheck [Bunny's pricing](https://bunny.net/docs/magic-containers/pricing) before deploying. Checked on 31 October 2026:
+Recheck [Bunny's pricing](https://bunny.net/docs/magic-containers/pricing?ref=ch5ir79hyc) (affiliate link) before deploying. Checked on 31 October 2026:
 
 - **Container:** $0.02 per CPU-hour, $0.005 per GB-hour of RAM in 64 MB blocks (frps idles in one block).
 - **wss:** CDN WebSockets at $0.235 per million connection-minutes (one connection per agent, about $0.01 a month). Every visitor byte crosses the CDN twice: visitor ↔ app zone and relay ↔ agent.
